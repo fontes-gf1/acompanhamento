@@ -282,18 +282,33 @@
             // 4. Valor de Mercado
             let vMktMM = (qc !== null) ? (pFim * qc) / 1000000 : null;
 
-            // 5. Dividend Yield Corrente
-            let prov = obterValorLookback(dadosFII.dividendo[ticker], dtFim);
-            let dyAnualizado = (prov !== null && pFim > 0) ? (prov / pFim) * 12 : null;
+            // 5. LÓGICA DO DY CORRENTE (Padrão: Último provento isolado conhecido)
+            let provCorrente = obterValorLookback(dadosFII.dividendo[ticker], dtFim);
+            let dyCorrenteAnualizado = (provCorrente !== null && pFim > 0) ? (provCorrente / pFim) * 12 : null;
+
+            // 6. NOVA LÓGICA: DY DO PERÍODO (Dinâmico com base na janela escolhida)
+            let proventosNoPeriodo = (dadosFII.dividendo[ticker] || []).filter(p => p.date >= dtIni && p.date <= dtFim);
+            let nProventos = proventosNoPeriodo.length;
+            let dyPeriodoAnualizado = null;
+
+            if (nProventos === 0) {
+                // Se não teve provento na janela, replica a lógica do DY corrente
+                dyPeriodoAnualizado = dyCorrenteAnualizado;
+            } else {
+                // Soma os dividendos do período e aplica o fator de anualização (12 / N)
+                let somaProventos = proventosNoPeriodo.reduce((acc, p) => acc + p.value, 0);
+                dyPeriodoAnualizado = (somaProventos * (12 / nProventos)) / pFim;
+            }
 
             if (!dadosPorSetor[info.setor]) dadosPorSetor[info.setor] = [];
             dadosPorSetor[info.setor].push({
                 'Ticker': ticker,
                 'Nome': info.nome,
-                'Preço Fech': fmtMoeda(pFim), // O ponto foi removido daqui para não quebrar o DataTables
+                'Preço Fech': fmtMoeda(pFim),
                 'Retorno Período': fmtPct(retorno),
-                'DY Corrente (Anual)': fmtPct(dyAnualizado),
-                'Provento Encontrado': fmtMoeda(prov),
+                'DY Corrente (Anual)': fmtPct(dyCorrenteAnualizado),
+                'DY do Período': fmtPct(dyPeriodoAnualizado), // Nova coluna calculada
+                'Eventos de Div.': nProventos,               // Indica quantos proventos caíram no delta de tempo
                 'Liquidez Diária (MM)': fmtNum(liquidezMM),
                 'Desconto (P/VP - 1)': fmtPct(desconto),
                 'Valor de Mercado (MM)': fmtNum(vMktMM)
@@ -305,7 +320,6 @@
         for (let setor in dadosPorSetor) {
             let tId = 'tab-setor-' + idx;
             
-            // Mapeia as colunas e recoloca o ponto apenas no título VISUAL (title)
             let cols = Object.keys(dadosPorSetor[setor][0]).map(k => {
                 return {
                     title: k === 'Preço Fech' ? 'Preço Fech.' : k,
@@ -330,8 +344,7 @@
                 language: { url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json' },
                 pageLength: 10,
                 order: [],
-                // Trava de segurança para evitar pop-ups de erro caso falte alguma célula
-                columnDefs: [{ defaultContent: "-", targets: "_all" }] 
+                columnDefs: [{ defaultContent: "-", targets: "_all" }]
             });
             idx++;
         }
