@@ -290,7 +290,7 @@
             dadosPorSetor[info.setor].push({
                 'Ticker': ticker,
                 'Nome': info.nome,
-                'Preço Fech.': fmtMoeda(pFim),
+                'Preço Fech': fmtMoeda(pFim), // O ponto foi removido daqui para não quebrar o DataTables
                 'Retorno Período': fmtPct(retorno),
                 'DY Corrente (Anual)': fmtPct(dyAnualizado),
                 'Provento Encontrado': fmtMoeda(prov),
@@ -304,7 +304,14 @@
         let idx = 0;
         for (let setor in dadosPorSetor) {
             let tId = 'tab-setor-' + idx;
-            let cols = Object.keys(dadosPorSetor[setor][0]).map(k => ({ title: k, data: k }));
+            
+            // Mapeia as colunas e recoloca o ponto apenas no título VISUAL (title)
+            let cols = Object.keys(dadosPorSetor[setor][0]).map(k => {
+                return {
+                    title: k === 'Preço Fech' ? 'Preço Fech.' : k,
+                    data: k
+                };
+            });
 
             container.append(`
                 <div class="col-12 mb-4">
@@ -322,12 +329,13 @@
                 columns: cols,
                 language: { url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json' },
                 pageLength: 10,
-                order: []
+                order: [],
+                // Trava de segurança para evitar pop-ups de erro caso falte alguma célula
+                columnDefs: [{ defaultContent: "-", targets: "_all" }] 
             });
             idx++;
         }
     }
-
     // --- Carregador de Tabelas Auxiliares de Ofertas ---
     function carregarOfertasCSV(arq, idTab) {
         Papa.parse(arq, {
