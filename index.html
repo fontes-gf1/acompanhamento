@@ -307,8 +307,8 @@
                 'Preço Fech': fmtMoeda(pFim),
                 'Retorno Período': fmtPct(retorno),
                 'DY Corrente (Anual)': fmtPct(dyCorrenteAnualizado),
-                'DY do Período': fmtPct(dyPeriodoAnualizado), // Nova coluna calculada
-                'Eventos de Div.': nProventos,               // Indica quantos proventos caíram no delta de tempo
+                'DY do Período': fmtPct(dyPeriodoAnualizado),
+                'Eventos de Div': nProventos, // Ponto removido da chave para destravar a biblioteca
                 'Liquidez Diária (MM)': fmtNum(liquidezMM),
                 'Desconto (P/VP - 1)': fmtPct(desconto),
                 'Valor de Mercado (MM)': fmtNum(vMktMM)
@@ -320,9 +320,13 @@
         for (let setor in dadosPorSetor) {
             let tId = 'tab-setor-' + idx;
             
+            // Mapeia os cabeçalhos visuais reinserindo os pontos apenas no título descritivo (title)
             let cols = Object.keys(dadosPorSetor[setor][0]).map(k => {
+                let tituloVisual = k;
+                if (k === 'Preço Fech') tituloVisual = 'Preço Fech.';
+                if (k === 'Eventos de Div') tituloVisual = 'Eventos de Div.';
                 return {
-                    title: k === 'Preço Fech' ? 'Preço Fech.' : k,
+                    title: tituloVisual,
                     data: k
                 };
             });
