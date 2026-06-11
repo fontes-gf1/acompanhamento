@@ -286,17 +286,17 @@
             let provCorrente = obterValorLookback(dadosFII.dividendo[ticker], dtFim);
             let dyCorrenteAnualizado = (provCorrente !== null && pFim > 0) ? (provCorrente / pFim) * 12 : null;
 
-            // 6. NOVA LÓGICA: DY DO PERÍODO (Dinâmico com base na janela escolhida)
+            // 6. LÓGICA: DY DO PERÍODO & SOMA TOTAL DE PROVENTOS
             let proventosNoPeriodo = (dadosFII.dividendo[ticker] || []).filter(p => p.date >= dtIni && p.date <= dtFim);
             let nProventos = proventosNoPeriodo.length;
+            let somaProventos = proventosNoPeriodo.reduce((acc, p) => acc + p.value, 0); // Soma acumulada pura
             let dyPeriodoAnualizado = null;
 
             if (nProventos === 0) {
                 // Se não teve provento na janela, replica a lógica do DY corrente
                 dyPeriodoAnualizado = dyCorrenteAnualizado;
             } else {
-                // Soma os dividendos do período e aplica o fator de anualização (12 / N)
-                let somaProventos = proventosNoPeriodo.reduce((acc, p) => acc + p.value, 0);
+                // Aplica o fator de anualização proporcional (12 / N) sobre a soma
                 dyPeriodoAnualizado = (somaProventos * (12 / nProventos)) / pFim;
             }
 
@@ -308,13 +308,51 @@
                 'Retorno Período': fmtPct(retorno),
                 'DY Corrente (Anual)': fmtPct(dyCorrenteAnualizado),
                 'DY do Período': fmtPct(dyPeriodoAnualizado),
-                'Eventos de Div': nProventos, // Ponto removido da chave para destravar a biblioteca
+                'Soma Div Periodo': fmtMoeda(somaProventos), // Nova chave substituindo a contagem por reais
                 'Liquidez Diária (MM)': fmtNum(liquidezMM),
                 'Desconto (P/VP - 1)': fmtPct(desconto),
                 'Valor de Mercado (MM)': fmtNum(vMktMM)
             });
         }
 
+        // Renderiza as tabelas nos quadrados por setor
+        let idx = 0;
+        for (let setor in dadosPorSetor) {
+            let tId = 'tab-setor-' + idx;
+            
+            // Mapeia os cabeçalhos visuais cuidando para não deixar pontos soltos nas chaves internas
+            let cols = Object.keys(dadosPorSetor[setor][0]).map(k => {
+                let tituloVisual = k;
+                if (k === 'Preço Fech') tituloVisual = 'Preço Fech.';
+                if (k === 'Soma Div Periodo') tituloVisual = 'Soma Div. Período'; // Nome visual elegante na tabela
+                return {
+                    title: tituloVisual,
+                    data: k
+                };
+            });
+
+            container.append(`
+                <div class="col-12 mb-4">
+                    <div class="card card-setor">
+                        <div class="card-header card-header-setor h5 py-3">🏢 Setor: ${setor}</div>
+                        <div class="card-body table-responsive">
+                            <table id="${tId}" class="table table-striped table-hover w-100"></table>
+                        </div>
+                    </div>
+                </div>
+            `);
+
+            $('#' + tId).DataTable({
+                data: dadosPorSetor[setor],
+                columns: cols,
+                language: { url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json' },
+                pageLength: 10,
+                order: [],
+                columnDefs: [{ defaultContent: "-", targets: "_all" }]
+            });
+            idx++;
+        }
+    }
         // Renderiza as tabelas nos quadrados por setor
         let idx = 0;
         for (let setor in dadosPorSetor) {
