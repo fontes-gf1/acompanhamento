@@ -36,7 +36,7 @@
 </div>
 
 <div class="container-fluid">
-    <h1>📊 Dashboard Analítico de FIIs</h1>
+    <h1>📊 Dashboard Analítico Avançado de FIIs</h1>
     
     <!-- Painel de Controle de Período -->
     <div class="control-panel">
@@ -95,7 +95,7 @@
 
 <script>
     // Estruturas de Memória Globais
-    let dadosFII = { preco: {}, dividendo: {}, volume: {}, patrimonio: {}, cotas: {} };
+    let dadosFII = { preco: {}, dividendo: {}, volume: {}, patrimonio: {}, cotas: {}, valorm2: {} };
     let mapaSetor = {};
     let listaDatasOrdenadas = [];
 
@@ -154,8 +154,9 @@
         if (!historicoTicker || historicoTicker.length === 0) return 0;
         let soma = 0, cont = 0;
         for (let i = 0; i < historicoTicker.length; i++) {
-            let d = historicoTicker[i].date;
-            if (d >= dataInicio && d <= dataFim) {
+            let d = i.date; // fallback ou checagem direta
+            let dateStr = historicoTicker[i].date;
+            if (dateStr >= dataInicio && dateStr <= dataFim) {
                 soma += historicoTicker[i].value;
                 cont++;
             }
@@ -226,6 +227,7 @@
         carregarAba('Volume Financeiro', dadosFII.volume);
         carregarAba('Patrimônio Líquido', dadosFII.patrimonio);
         carregarAba('Quantidade de Cotas', dadosFII.cotas);
+        carregarAba('Valor m2', dadosFII.valorm2); // Puxa a nova aba do Excel
 
         listaDatasOrdenadas.sort((a,b) => a.localeCompare(b));
 
@@ -249,7 +251,7 @@
     }
 
     // --- Motor de Cálculo Quantitativo ---
-    function executarCalculosFII() {
+    function ejecutarCalculosFII() {
         let dtIni = $('#data-inicial').val();
         let dtFim = $('#data-final').val();
         let container = $('#container-setores').empty();
@@ -298,6 +300,12 @@
                 dyPeriodoAnualizado = (somaProventos * (12 / nProventos)) / pFim;
             }
 
+            // 7. Valor de Mercado por m² (Pega o único valor existente independente da data)
+            let vM2Puro = null;
+            if (dadosFII.valorm2[ticker] && dadosFII.valorm2[ticker].length > 0) {
+                vM2Puro = dadosFII.valorm2[ticker][0].value;
+            }
+
             if (!dadosPorSetor[info.setor]) dadosPorSetor[info.setor] = [];
             dadosPorSetor[info.setor].push({
                 'Ticker': ticker,
@@ -309,7 +317,8 @@
                 'Soma Div Periodo': fmtMoeda(somaProventos),
                 'Liquidez Diária (MM)': fmtNum(liquidezMM),
                 'Desconto (P/VP - 1)': fmtPct(desconto),
-                'Valor de Mercado (MM)': fmtNum(vMktMM)
+                'Valor de Mercado (MM)': fmtNum(vMktMM),
+                'Valor de Mercado m2': fmtNum(vM2Puro) // Adicionado sem formatação de moeda prefixada (ou use fmtMoeda se preferir R$)
             });
         }
 
@@ -322,6 +331,7 @@
                 let tituloVisual = k;
                 if (k === 'Preço Fech') tituloVisual = 'Preço Fech.';
                 if (k === 'Soma Div Periodo') tituloVisual = 'Soma Div. Período';
+                if (k === 'Valor de Mercado m2') tituloVisual = 'Valor de Mercado/m²';
                 return {
                     title: tituloVisual,
                     data: k
@@ -378,7 +388,7 @@
         carregarOfertasCSV('Ofertas_Andamento.csv', '#table-andamento');
         carregarOfertasCSV('Ofertas_Realizadas.csv', '#table-realizadas');
 
-        $('#btn-calcular').on('click', executarCalculosFII);
+        $('#btn-calcular').on('click', ejecutarCalculosFII);
     });
 </script>
 </body>
