@@ -94,12 +94,10 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
 <script>
-    // Estruturas de Memória Globais
     let dadosFII = { preco: {}, dividendo: {}, volume: {}, patrimonio: {}, cotas: {}, valorm2: {} };
     let mapaSetor = {};
     let listaDatasOrdenadas = [];
 
-    // --- Formatadores Visuais ---
     function fmtMoeda(v) { return v === null ? "-" : 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
     function fmtPct(v) { 
         if (v === null) return "-";
@@ -108,20 +106,18 @@
     }
     function fmtNum(v) { return v === null ? "-" : v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
-    // --- Extração Automática do Ticker ---
     function extrairTicker(texto) {
         if (!texto) return null;
         let match = texto.match(/([A-Z0-9]{4}11)/);
         return match ? match[1] : null;
     }
 
-    // --- Conversor de Datas Inteligente para o Excel ---
     function normalizarDataExcel(val) {
         if (!val) return null;
         if (val instanceof Date) {
             return val.toISOString().split('T')[0];
         }
-        if (typeof val === 'number') { // Serial do Excel
+        if (typeof val === 'number') { 
             let d = new Date(Date.UTC(0, 0, val - 1));
             return d.toISOString().split('T')[0];
         }
@@ -135,7 +131,6 @@
         return null;
     }
 
-    // --- Algoritmo de Lookback para Trás ---
     function obterValorLookback(historicoTicker, dataLimite) {
         if (!historicoTicker || historicoTicker.length === 0) return null;
         let valorEncontrado = null;
@@ -149,12 +144,10 @@
         return valorEncontrado;
     }
 
-    // --- Algoritmo de Média de Período (Liquidez) ---
     function calcularMediaPeriodo(historicoTicker, dataInicio, dataFim) {
         if (!historicoTicker || historicoTicker.length === 0) return 0;
         let soma = 0, cont = 0;
         for (let i = 0; i < historicoTicker.length; i++) {
-            let d = i.date; // fallback ou checagem direta
             let dateStr = historicoTicker[i].date;
             if (dateStr >= dataInicio && dateStr <= dataFim) {
                 soma += historicoTicker[i].value;
@@ -164,11 +157,9 @@
         return cont > 0 ? (soma / cont) : 0;
     }
 
-    // --- Ingestão das Abas Matrizes ---
     function processarExcel(arrayBuffer) {
         let workbook = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
 
-        // 1. Carrega Mapeamento de Setores
         let shSetor = workbook.Sheets['Setor'];
         if (shSetor) {
             let rows = XLSX.utils.sheet_to_json(shSetor);
@@ -180,7 +171,6 @@
             });
         }
 
-        // 2. Processamento das Abas de Dados
         function carregarAba(abaName, targetObj) {
             let sheet = workbook.Sheets[abaName];
             if (!sheet) return;
@@ -227,11 +217,10 @@
         carregarAba('Volume Financeiro', dadosFII.volume);
         carregarAba('Patrimônio Líquido', dadosFII.patrimonio);
         carregarAba('Quantidade de Cotas', dadosFII.cotas);
-        carregarAba('Valor m2', dadosFII.valorm2); // Puxa a nova aba do Excel
+        carregarAba('Valor m2', dadosFII.valorm2);
 
         listaDatasOrdenadas.sort((a,b) => a.localeCompare(b));
 
-        // Popula Dropdowns
         let selIni = $('#data-inicial'), selFim = $('#data-final');
         selIni.empty(); selFim.empty();
         listaDatasOrdenadas.forEach(d => {
@@ -239,7 +228,6 @@
             selFim.append(`<option value="${d}">${d}</option>`);
         });
 
-        // Configura datas padrão
         if (listaDatasOrdenadas.length > 0) {
             selFim.val(listaDatasOrdenadas[listaDatasOrdenadas.length - 1]);
             let idxIni = Math.max(0, listaDatasOrdenadas.length - 6);
@@ -247,11 +235,11 @@
         }
 
         $('#loading').fadeOut();
-        executarCalculosFII();
+        executarCalculosFII(); // O ERRO DE DIGITAÇÃO FOI CORRIGIDO AQUI
     }
 
-    // --- Motor de Cálculo Quantitativo ---
-    function ejecutarCalculosFII() {
+    // O NOME DA FUNÇÃO FOI CORRIGIDO AQUI
+    function executarCalculosFII() {
         let dtIni = $('#data-inicial').val();
         let dtFim = $('#data-final').val();
         let container = $('#container-setores').empty();
@@ -265,14 +253,11 @@
             let pFim = obterValorLookback(dadosFII.preco[ticker], dtFim);
             if (pFim === null) continue;
 
-            // 1. Retorno Período
             let retorno = (pIni !== null && pIni > 0) ? (pFim / pIni) - 1 : null;
 
-            // 2. Liquidez Diária Média
             let vMed = calcularMediaPeriodo(dadosFII.volume[ticker], dtIni, dtFim);
             let liquidezMM = vMed / 1000000;
 
-            // 3. Desconto Patrimonial (Lookback)
             let pl = obterValorLookback(dadosFII.patrimonio[ticker], dtFim);
             let qc = obterValorLookback(dadosFII.cotas[ticker], dtFim);
             let desconto = null;
@@ -281,14 +266,11 @@
                 desconto = cotaPatr > 0 ? (pFim / cotaPatr) - 1 : null;
             }
 
-            // 4. Valor de Mercado
             let vMktMM = (qc !== null) ? (pFim * qc) / 1000000 : null;
 
-            // 5. DY Corrente Anualizado
             let provCorrente = obterValorLookback(dadosFII.dividendo[ticker], dtFim);
             let dyCorrenteAnualizado = (provCorrente !== null && pFim > 0) ? (provCorrente / pFim) * 12 : null;
 
-            // 6. DY do Período & Soma Total de Proventos
             let proventosNoPeriodo = (dadosFII.dividendo[ticker] || []).filter(p => p.date >= dtIni && p.date <= dtFim);
             let nProventos = proventosNoPeriodo.length;
             let somaProventos = proventosNoPeriodo.reduce((acc, p) => acc + p.value, 0);
@@ -300,7 +282,6 @@
                 dyPeriodoAnualizado = (somaProventos * (12 / nProventos)) / pFim;
             }
 
-            // 7. Valor de Mercado por m² (Pega o único valor existente independente da data)
             let vM2Puro = null;
             if (dadosFII.valorm2[ticker] && dadosFII.valorm2[ticker].length > 0) {
                 vM2Puro = dadosFII.valorm2[ticker][0].value;
@@ -318,11 +299,10 @@
                 'Liquidez Diária (MM)': fmtNum(liquidezMM),
                 'Desconto (P/VP - 1)': fmtPct(desconto),
                 'Valor de Mercado (MM)': fmtNum(vMktMM),
-                'Valor de Mercado m2': fmtNum(vM2Puro) // Adicionado sem formatação de moeda prefixada (ou use fmtMoeda se preferir R$)
+                'Valor de Mercado m2': fmtNum(vM2Puro)
             });
         }
 
-        // Renderiza as tabelas nos quadrados por setor
         let idx = 0;
         for (let setor in dadosPorSetor) {
             let tId = 'tab-setor-' + idx;
@@ -361,9 +341,10 @@
         }
     }
 
-    // --- Carregador de Tabelas Auxiliares de Ofertas ---
     function carregarOfertasCSV(arq, idTab) {
-        Papa.parse(arq, {
+        // Truque anti-cache também nos CSVs para garantir dados frescos
+        let arqComCacheBuster = arq + '?v=' + new Date().getTime();
+        Papa.parse(arqComCacheBuster, {
             download: true, header: true, skipEmptyLines: true,
             complete: function(r) {
                 if (r.data.length === 0) return;
@@ -377,9 +358,11 @@
         });
     }
 
-    // Inicialização da Página
     $(document).ready(function() {
-        let urlPlanilha = 'Base_Geral.xlsx';
+        // TRUQUE DE MESTRE: O timestamp "?v=..." força o navegador a baixar sempre a versão mais recente do arquivo, burlando o cache do GitHub
+        let timestamp = new Date().getTime();
+        let urlPlanilha = 'Base_Geral.xlsx?v=' + timestamp;
+        
         fetch(urlPlanilha)
             .then(res => res.arrayBuffer())
             .then(ab => processarExcel(ab))
@@ -388,7 +371,7 @@
         carregarOfertasCSV('Ofertas_Andamento.csv', '#table-andamento');
         carregarOfertasCSV('Ofertas_Realizadas.csv', '#table-realizadas');
 
-        $('#btn-calcular').on('click', ejecutarCalculosFII);
+        $('#btn-calcular').on('click', executarCalculosFII);
     });
 </script>
 </body>
