@@ -74,7 +74,7 @@
         <!-- Texto de ajuda para Datas Específicas -->
         <div class="row mt-2" id="help-text-datas" style="display: none;">
             <div class="col-12 text-muted" style="font-size: 0.85rem;">
-                <em>* O seletor de datas restringe as opções apenas aos dias úteis em que houve pregão e há dados disponíveis.</em>
+                <em>* O seletor de datas restringe as opções apenas aos dias úteis em que houve pregão e há dados disponíveis no sistema.</em>
             </div>
         </div>
     </div>
@@ -120,11 +120,15 @@
     let listaDatasOrdenadas = [];
 
     function fmtMoeda(v) { return (v === null || v === undefined) ? "-" : 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+    
+    // Função de formatação blindada para garantir o sinal (+/-) correto
     function fmtPct(v) { 
         if (v === null || v === undefined || isNaN(v)) return "-";
-        let sinal = v > 0 ? "+" : "";
-        return sinal + (v * 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%'; 
+        if (v === 0) return "0,00%";
+        let sinal = v > 0 ? "+" : "-";
+        return sinal + (Math.abs(v) * 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%'; 
     }
+    
     function fmtNum(v) { return (v === null || v === undefined) ? "-" : v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
     function extrairTicker(texto) {
@@ -152,7 +156,6 @@
 
     // --- FUNÇÕES DE LÓGICA DE DATAS ---
     
-    // Subtrai tempo de forma segura (evitando problemas de Fuso Horário)
     function calcularDataRetroativa(baseDateStr, moveType) {
         let parts = baseDateStr.split('-');
         let y = parseInt(parts[0]);
@@ -163,7 +166,7 @@
         
         if (moveType === 'semana') dateObj.setDate(dateObj.getDate() - 7);
         else if (moveType === 'mes') dateObj.setMonth(dateObj.getMonth() - 1);
-        else if (moveType === 'ytd') dateObj = new Date(y, 0, 1);
+        else if (moveType === 'ytd') return `${y}-01-01`; // Fixa direto no início do ano
         else if (moveType === 'ltm') dateObj.setFullYear(dateObj.getFullYear() - 1);
         
         let ry = dateObj.getFullYear();
@@ -173,7 +176,6 @@
         return `${ry}-${rm}-${rd}`;
     }
 
-    // Busca a data VÁLIDA (com pregão) mais próxima do alvo
     function obterDataValidaMaisProxima(targetDateStr) {
         if (listaDatasOrdenadas.length === 0) return null;
         let closest = listaDatasOrdenadas[0];
@@ -290,7 +292,6 @@
 
         listaDatasOrdenadas.sort((a,b) => a.localeCompare(b));
 
-        // Preencher caixas de seleção de datas específicas com todas as opções
         let selIni = $('#data-inicial'), selFim = $('#data-final');
         selIni.empty(); selFim.empty();
         listaDatasOrdenadas.forEach(d => {
@@ -300,14 +301,18 @@
 
         $('#loading').fadeOut();
         
-        // Simula a escolha inicial do dropdown para rodar as lógicas
         $('#periodo-select').trigger('change');
     }
 
     function executarCalculosFII() {
-        let dtIni = $('#data-inicial').val();
-        let dtFim = $('#data-final').val();
+        let val1 = $('#data-inicial').val();
+        let val2 = $('#data-final').val();
         let container = $('#container-setores').empty();
+
+        // TRAVA DE SEGURANÇA: Garante sempre ordem cronológica correta (dtIni <= dtFim)
+        // Se o usuário selecionou as datas "invertidas", o sistema corrige automaticamente nos bastidores.
+        let dtIni = val1 <= val2 ? val1 : val2;
+        let dtFim = val1 <= val2 ? val2 : val1;
 
         let dadosPorSetor = {};
 
@@ -324,6 +329,7 @@
             if (pFim === null) continue;
 
             let retorno = (pIni !== null && pIni > 0) ? (pFim / pIni) - 1 : null;
+            
             let pAjIni = obterValorLookback(dadosFII.precoAjustado[ticker], dtIni);
             let pAjFim = obterValorLookback(dadosFII.precoAjustado[ticker], dtFim);
             let retornoAjustado = (pAjIni !== null && pAjIni > 0 && pAjFim !== null) ? (pAjFim / pAjIni) - 1 : null;
@@ -436,16 +442,13 @@
     }
 
     $(document).ready(function() {
-        // Lógica de mudança do Período
         $('#periodo-select').on('change', function() {
             let selecao = $(this).val();
             
             if (selecao === 'custom') {
-                // Modo manual: exibe os dropdowns de datas específicas
                 $('#custom-dates-container').fadeIn();
                 $('#help-text-datas').fadeIn();
             } else {
-                // Modo Automático: Esconde os dropdowns e atualiza o backend sozinho
                 $('#custom-dates-container').hide();
                 $('#help-text-datas').hide();
                 
@@ -457,15 +460,13 @@
                     $('#data-inicial').val(dataRealEncontrada);
                     $('#data-final').val(dataMaxima);
                     
-                    executarCalculosFII(); // Calcula automaticamente ao trocar a opção
+                    executarCalculosFII(); 
                 }
             }
         });
 
-        // Botão de Forçar Recálculo (Usado principalmente para as "Datas Específicas")
         $('#btn-calcular').on('click', executarCalculosFII);
 
-        // Inicialização do Excel
         let timestamp = new Date().getTime();
         let urlPlanilha = 'Base_Geral.xlsx?v=' + timestamp;
         
