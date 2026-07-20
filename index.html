@@ -29,7 +29,7 @@
 </head>
 <body>
 
-<!-- Tela de Carregamento para Processamento do Excel -->
+<!-- Tela de Carregamento -->
 <div id="loading" class="loading-overlay">
     <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;"></div>
     <h5 class="mt-3 fw-bold text-secondary">Processando matrizes de dados do Excel...</h5>
@@ -48,12 +48,14 @@
                     <option value="ltm" selected>LTM (Últimos 12 Meses)</option>
                     <option value="ytd">YTD (No Ano)</option>
                     <option value="mes">Último Mês</option>
-                    <option value="semana">Última Semana</option>
+                    <option value="7dias">Últimos 7 dias (D-7)</option>
+                    <option value="semana_atual">Semana da Base (Seg a Sex)</option>
+                    <option value="semana_passada">Semana Anterior (Seg a Sex)</option>
                     <option value="custom">Datas Específicas...</option>
                 </select>
             </div>
             
-            <!-- Contêiner de Datas Específicas (Escondido por padrão) -->
+            <!-- Contêiner de Datas Específicas -->
             <div class="col-md-6 mb-3 mb-md-0" id="custom-dates-container" style="display: none;">
                 <div class="row">
                     <div class="col-6">
@@ -71,7 +73,6 @@
                 <button id="btn-calcular" class="btn btn-primary fw-bold px-4 w-100">🔄 Recalcular Indicadores</button>
             </div>
         </div>
-        <!-- Texto de ajuda para Datas Específicas -->
         <div class="row mt-2" id="help-text-datas" style="display: none;">
             <div class="col-12 text-muted" style="font-size: 0.85rem;">
                 <em>* O seletor de datas restringe as opções apenas aos dias úteis em que houve pregão e há dados disponíveis no sistema.</em>
@@ -90,7 +91,6 @@
         <div class="tab-pane fade show active" id="base" role="tabpanel">
             <div id="container-setores" class="row"></div>
         </div>
-
         <div class="tab-pane fade px-3" id="andamento" role="tabpanel">
             <div class="card card-setor"><div class="card-body table-responsive">
                 <h4 class="mb-3 text-primary">Ofertas em Andamento</h4>
@@ -120,15 +120,12 @@
     let listaDatasOrdenadas = [];
 
     function fmtMoeda(v) { return (v === null || v === undefined) ? "-" : 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
-    
-    // Função de formatação blindada para garantir o sinal (+/-) correto
     function fmtPct(v) { 
         if (v === null || v === undefined || isNaN(v)) return "-";
         if (v === 0) return "0,00%";
         let sinal = v > 0 ? "+" : "-";
         return sinal + (Math.abs(v) * 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%'; 
     }
-    
     function fmtNum(v) { return (v === null || v === undefined) ? "-" : v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
     function extrairTicker(texto) {
@@ -154,26 +151,68 @@
         return null;
     }
 
-    // --- FUNÇÕES DE LÓGICA DE DATAS ---
-    
-    function calcularDataRetroativa(baseDateStr, moveType) {
-        let parts = baseDateStr.split('-');
+    // --- NOVA LÓGICA DE DATAS ---
+    // Agora o sistema retorna a Data Inicial e Data Final com base na opção escolhida
+    function calcularLimitesData(dataMaximaStr, tipo) {
+        let parts = dataMaximaStr.split('-');
         let y = parseInt(parts[0]);
         let m = parseInt(parts[1]) - 1;
         let d = parseInt(parts[2]);
         
-        let dateObj = new Date(y, m, d);
+        let dataMaxObj = new Date(y, m, d);
+        let result = { ini: dataMaximaStr, fim: dataMaximaStr };
         
-        if (moveType === 'semana') dateObj.setDate(dateObj.getDate() - 7);
-        else if (moveType === 'mes') dateObj.setMonth(dateObj.getMonth() - 1);
-        else if (moveType === 'ytd') return `${y}-01-01`; // Fixa direto no início do ano
-        else if (moveType === 'ltm') dateObj.setFullYear(dateObj.getFullYear() - 1);
+        if (tipo === '7dias') {
+            let p = new Date(dataMaxObj);
+            p.setDate(p.getDate() - 7);
+            result.ini = p.toISOString().split('T')[0];
+            result.fim = dataMaximaStr;
+        }
+        else if (tipo === 'semana_atual') {
+            // Segunda a Sexta da semana a qual a "Data Máxima" pertence
+            let day = dataMaxObj.getDay();
+            let diff = (day === 0 ? 6 : day - 1);
+            let monday = new Date(dataMaxObj);
+            monday.setDate(dataMaxObj.getDate() - diff);
+            
+            let friday = new Date(monday);
+            friday.setDate(monday.getDate() + 4);
+            
+            result.ini = monday.toISOString().split('T')[0];
+            result.fim = friday.toISOString().split('T')[0];
+        }
+        else if (tipo === 'semana_passada') {
+            // Segunda a Sexta da semana anterior à "Data Máxima"
+            let day = dataMaxObj.getDay();
+            let diff = (day === 0 ? 6 : day - 1);
+            
+            let lastMonday = new Date(dataMaxObj);
+            lastMonday.setDate(dataMaxObj.getDate() - diff - 7);
+            
+            let lastFriday = new Date(lastMonday);
+            lastFriday.setDate(lastMonday.getDate() + 4);
+            
+            result.ini = lastMonday.toISOString().split('T')[0];
+            result.fim = lastFriday.toISOString().split('T')[0];
+        }
+        else if (tipo === 'mes') {
+            let p = new Date(dataMaxObj);
+            p.setMonth(p.getMonth() - 1);
+            result.ini = p.toISOString().split('T')[0];
+            result.fim = dataMaximaStr;
+        }
+        else if (tipo === 'ytd') {
+            result.ini = `${y}-01-01`;
+            result.fim = dataMaximaStr;
+        }
+        else if (tipo === 'ltm') {
+            let p = new Date(dataMaxObj);
+            p.setFullYear(p.getFullYear() - 1);
+            result.ini = p.toISOString().split('T')[0];
+            result.fim = dataMaximaStr;
+        }
         
-        let ry = dateObj.getFullYear();
-        let rm = String(dateObj.getMonth() + 1).padStart(2, '0');
-        let rd = String(dateObj.getDate()).padStart(2, '0');
-        
-        return `${ry}-${rm}-${rd}`;
+        return result;
     }
 
     function obterDataValidaMaisProxima(targetDateStr) {
@@ -309,8 +348,6 @@
         let val2 = $('#data-final').val();
         let container = $('#container-setores').empty();
 
-        // TRAVA DE SEGURANÇA: Garante sempre ordem cronológica correta (dtIni <= dtFim)
-        // Se o usuário selecionou as datas "invertidas", o sistema corrige automaticamente nos bastidores.
         let dtIni = val1 <= val2 ? val1 : val2;
         let dtFim = val1 <= val2 ? val2 : val1;
 
@@ -329,7 +366,6 @@
             if (pFim === null) continue;
 
             let retorno = (pIni !== null && pIni > 0) ? (pFim / pIni) - 1 : null;
-            
             let pAjIni = obterValorLookback(dadosFII.precoAjustado[ticker], dtIni);
             let pAjFim = obterValorLookback(dadosFII.precoAjustado[ticker], dtFim);
             let retornoAjustado = (pAjIni !== null && pAjIni > 0 && pAjFim !== null) ? (pAjFim / pAjIni) - 1 : null;
@@ -454,11 +490,16 @@
                 
                 if (listaDatasOrdenadas.length > 0) {
                     let dataMaxima = listaDatasOrdenadas[listaDatasOrdenadas.length - 1];
-                    let dataAlvo = calcularDataRetroativa(dataMaxima, selecao);
-                    let dataRealEncontrada = obterDataValidaMaisProxima(dataAlvo);
+                    let limites = calcularLimitesData(dataMaxima, selecao);
                     
-                    $('#data-inicial').val(dataRealEncontrada);
-                    $('#data-final').val(dataMaxima);
+                    let dtIniValida = obterDataValidaMaisProxima(limites.ini);
+                    let dtFimValida = obterDataValidaMaisProxima(limites.fim);
+                    
+                    // Failsafe: Evita que Data Final avance além do limite disponível caso o alvo caia num fim de semana
+                    if (dtFimValida > dataMaxima) dtFimValida = dataMaxima;
+                    
+                    $('#data-inicial').val(dtIniValida);
+                    $('#data-final').val(dtFimValida);
                     
                     executarCalculosFII(); 
                 }
