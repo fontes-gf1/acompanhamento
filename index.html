@@ -94,7 +94,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
 <script>
-    let dadosFII = { preco: {}, dividendo: {}, volume: {}, patrimonio: {}, cotas: {}, valorm2: {} };
+    // ADICIONADO: objeto para precoAjustado
+    let dadosFII = { preco: {}, precoAjustado: {}, dividendo: {}, volume: {}, patrimonio: {}, cotas: {}, valorm2: {} };
     let mapaSetor = {};
     let listaDatasOrdenadas = [];
 
@@ -213,6 +214,7 @@
         }
 
         carregarAba('Preço de Fechamento', dadosFII.preco);
+        carregarAba('Preço de Fechamento Ajustado', dadosFII.precoAjustado); // ADICIONADO
         carregarAba('Provento Dividendo', dadosFII.dividendo);
         carregarAba('Volume Financeiro', dadosFII.volume);
         carregarAba('Patrimônio Líquido', dadosFII.patrimonio);
@@ -235,16 +237,21 @@
         }
 
         $('#loading').fadeOut();
-        executarCalculosFII(); // O ERRO DE DIGITAÇÃO FOI CORRIGIDO AQUI
+        executarCalculosFII(); 
     }
 
-    // O NOME DA FUNÇÃO FOI CORRIGIDO AQUI
     function executarCalculosFII() {
         let dtIni = $('#data-inicial').val();
         let dtFim = $('#data-final').val();
         let container = $('#container-setores').empty();
 
         let dadosPorSetor = {};
+
+        // Cálculo da data exata de 12 meses antes da dtFim (para o DY LTM)
+        let yyyy = parseInt(dtFim.substring(0, 4));
+        let mm = dtFim.substring(5, 7);
+        let dd = dtFim.substring(8, 10);
+        let dtLTM_Ini = `${yyyy - 1}-${mm}-${dd}`;
 
         for (let ticker in mapaSetor) {
             let info = mapaSetor[ticker];
@@ -254,6 +261,11 @@
             if (pFim === null) continue;
 
             let retorno = (pIni !== null && pIni > 0) ? (pFim / pIni) - 1 : null;
+
+            // ADICIONADO: Retorno Ajustado no Período
+            let pAjIni = obterValorLookback(dadosFII.precoAjustado[ticker], dtIni);
+            let pAjFim = obterValorLookback(dadosFII.precoAjustado[ticker], dtFim);
+            let retornoAjustado = (pAjIni !== null && pAjIni > 0) ? (pAjFim / pAjIni) - 1 : null;
 
             let vMed = calcularMediaPeriodo(dadosFII.volume[ticker], dtIni, dtFim);
             let liquidezMM = vMed / 1000000;
@@ -271,15 +283,20 @@
             let provCorrente = obterValorLookback(dadosFII.dividendo[ticker], dtFim);
             let dyCorrenteAnualizado = (provCorrente !== null && pFim > 0) ? (provCorrente / pFim) * 12 : null;
 
+            // Para manter a coluna 'Soma Div Periodo' (apenas no período selecionado)
             let proventosNoPeriodo = (dadosFII.dividendo[ticker] || []).filter(p => p.date >= dtIni && p.date <= dtFim);
-            let nProventos = proventosNoPeriodo.length;
             let somaProventos = proventosNoPeriodo.reduce((acc, p) => acc + p.value, 0);
-            let dyPeriodoAnualizado = null;
 
-            if (nProventos === 0) {
-                dyPeriodoAnualizado = dyCorrenteAnualizado;
-            } else {
-                dyPeriodoAnualizado = (somaProventos * (12 / nProventos)) / pFim;
+            // ADICIONADO: Cálculo do DY LTM
+            let proventosLTM = (dadosFII.dividendo[ticker] || []).filter(p => p.date > dtLTM_Ini && p.date <= dtFim);
+            // Conta os meses distintos em que houve pagamento (formato YYYY-MM)
+            let mesesComPagamento = new Set(proventosLTM.map(p => p.date.substring(0, 7))).size;
+            let somaProventosLTM = proventosLTM.reduce((acc, p) => acc + p.value, 0);
+            let dyLTM = null;
+
+            if (mesesComPagamento > 0 && pFim > 0) {
+                // Anualiza com base na quantidade de meses distintos que efetivamente pagaram dividendo
+                dyLTM = (somaProventosLTM * (12 / mesesComPagamento)) / pFim;
             }
 
             let vM2Puro = null;
@@ -293,8 +310,9 @@
                 'Nome': info.nome,
                 'Preço Fech': fmtMoeda(pFim),
                 'Retorno Período': fmtPct(retorno),
+                'Retorno Aj. Período': fmtPct(retornoAjustado), // NOVA COLUNA
                 'DY Corrente (Anual)': fmtPct(dyCorrenteAnualizado),
-                'DY do Período': fmtPct(dyPeriodoAnualizado),
+                'DY LTM': fmtPct(dyLTM), // NOVA COLUNA
                 'Soma Div Periodo': fmtMoeda(somaProventos),
                 'Liquidez Diária (MM)': fmtNum(liquidezMM),
                 'Desconto (P/VP - 1)': fmtPct(desconto),
@@ -342,7 +360,6 @@
     }
 
     function carregarOfertasCSV(arq, idTab) {
-        // Truque anti-cache também nos CSVs para garantir dados frescos
         let arqComCacheBuster = arq + '?v=' + new Date().getTime();
         Papa.parse(arqComCacheBuster, {
             download: true, header: true, skipEmptyLines: true,
@@ -359,7 +376,6 @@
     }
 
     $(document).ready(function() {
-        // TRUQUE DE MESTRE: O timestamp "?v=..." força o navegador a baixar sempre a versão mais recente do arquivo, burlando o cache do GitHub
         let timestamp = new Date().getTime();
         let urlPlanilha = 'Base_Geral.xlsx?v=' + timestamp;
         
