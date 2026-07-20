@@ -29,7 +29,7 @@
 </head>
 <body>
 
-<!-- Tela de Carregamento para Processamento do Excel pesado -->
+<!-- Tela de Carregamento para Processamento do Excel -->
 <div id="loading" class="loading-overlay">
     <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;"></div>
     <h5 class="mt-3 fw-bold text-secondary">Processando matrizes de dados do Excel...</h5>
@@ -94,18 +94,17 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
 <script>
-    // ADICIONADO: objeto para precoAjustado
     let dadosFII = { preco: {}, precoAjustado: {}, dividendo: {}, volume: {}, patrimonio: {}, cotas: {}, valorm2: {} };
     let mapaSetor = {};
     let listaDatasOrdenadas = [];
 
-    function fmtMoeda(v) { return v === null ? "-" : 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+    function fmtMoeda(v) { return (v === null || v === undefined) ? "-" : 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
     function fmtPct(v) { 
-        if (v === null) return "-";
+        if (v === null || v === undefined || isNaN(v)) return "-";
         let sinal = v > 0 ? "+" : "";
         return sinal + (v * 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%'; 
     }
-    function fmtNum(v) { return v === null ? "-" : v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+    function fmtNum(v) { return (v === null || v === undefined) ? "-" : v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
     function extrairTicker(texto) {
         if (!texto) return null;
@@ -172,28 +171,51 @@
             });
         }
 
-        function carregarAba(abaName, targetObj) {
-            let sheet = workbook.Sheets[abaName];
-            if (!sheet) return;
+        // Função CARREGAR ABA reescrita para ser super resistente a falhas de formatação
+        function carregarAba(nomeEsperado, targetObj) {
+            // 1. Busca flexível ignorando acentos e espaços invisíveis
+            let nomeAlvoLimpo = nomeEsperado.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+            let sheetName = workbook.SheetNames.find(s => {
+                let sLimpo = s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+                return sLimpo === nomeAlvoLimpo;
+            });
+
+            if (!sheetName) return; // Se a aba realmente não existir, sai silenciosamente.
+
+            let sheet = workbook.Sheets[sheetName];
             let rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
             if (rows.length < 2) return;
 
             let colMapeamento = [];
-            let cabecalhos = rows[0];
+            
+            // 2. Busca Tickers nas 3 primeiras linhas do Excel (previne falhas se a linha 1 for vazia ou diferente)
+            let maxCols = 0;
+            for (let i = 0; i < Math.min(3, rows.length); i++) {
+                if (rows[i] && rows[i].length > maxCols) maxCols = rows[i].length;
+            }
 
-            for (let c = 1; c < cabecalhos.length; c++) {
-                let ticker = extrairTicker(cabecalhos[c]);
+            for (let c = 1; c < maxCols; c++) {
+                let textoColuna = "";
+                for (let i = 0; i < Math.min(3, rows.length); i++) {
+                    if (rows[i] && rows[i][c]) textoColuna += " " + rows[i][c];
+                }
+                
+                let ticker = extrairTicker(textoColuna);
                 if (ticker) {
                     colMapeamento[c] = ticker;
-                    if (!mapaSetor[ticker]) mapaSetor[ticker] = { setor: 'Outros', nome: cabecalhos[c].split(' - ')[0] };
+                    // Mapeia caso o fundo não conste na aba Setor
+                    if (!mapaSetor[ticker]) mapaSetor[ticker] = { setor: 'Outros', nome: ticker };
                 }
             }
 
-            for (let r = 2; r < rows.length; r++) {
+            // 3. Lê os dados numéricos
+            for (let r = 1; r < rows.length; r++) {
+                if (!rows[r] || rows[r].length === 0) continue;
+                
                 let dataFmt = normalizarDataExcel(rows[r][0]);
-                if (!dataFmt) continue;
+                if (!dataFmt) continue; // Pula linhas de cabeçalho ou vázias
 
-                if (abaName === 'Preço de Fechamento' && !listaDatasOrdenadas.includes(dataFmt)) {
+                if (nomeEsperado === 'Preço de Fechamento' && !listaDatasOrdenadas.includes(dataFmt)) {
                     listaDatasOrdenadas.push(dataFmt);
                 }
 
@@ -214,7 +236,7 @@
         }
 
         carregarAba('Preço de Fechamento', dadosFII.preco);
-        carregarAba('Preço de Fechamento Ajustado', dadosFII.precoAjustado); // ADICIONADO
+        carregarAba('Preço de Fechamento Ajustado', dadosFII.precoAjustado);
         carregarAba('Provento Dividendo', dadosFII.dividendo);
         carregarAba('Volume Financeiro', dadosFII.volume);
         carregarAba('Patrimônio Líquido', dadosFII.patrimonio);
@@ -247,7 +269,6 @@
 
         let dadosPorSetor = {};
 
-        // Cálculo da data exata de 12 meses antes da dtFim (para o DY LTM)
         let yyyy = parseInt(dtFim.substring(0, 4));
         let mm = dtFim.substring(5, 7);
         let dd = dtFim.substring(8, 10);
@@ -262,10 +283,10 @@
 
             let retorno = (pIni !== null && pIni > 0) ? (pFim / pIni) - 1 : null;
 
-            // ADICIONADO: Retorno Ajustado no Período
+            // Retorno Ajustado Corrigido
             let pAjIni = obterValorLookback(dadosFII.precoAjustado[ticker], dtIni);
             let pAjFim = obterValorLookback(dadosFII.precoAjustado[ticker], dtFim);
-            let retornoAjustado = (pAjIni !== null && pAjIni > 0) ? (pAjFim / pAjIni) - 1 : null;
+            let retornoAjustado = (pAjIni !== null && pAjIni > 0 && pAjFim !== null) ? (pAjFim / pAjIni) - 1 : null;
 
             let vMed = calcularMediaPeriodo(dadosFII.volume[ticker], dtIni, dtFim);
             let liquidezMM = vMed / 1000000;
@@ -283,19 +304,15 @@
             let provCorrente = obterValorLookback(dadosFII.dividendo[ticker], dtFim);
             let dyCorrenteAnualizado = (provCorrente !== null && pFim > 0) ? (provCorrente / pFim) * 12 : null;
 
-            // Para manter a coluna 'Soma Div Periodo' (apenas no período selecionado)
             let proventosNoPeriodo = (dadosFII.dividendo[ticker] || []).filter(p => p.date >= dtIni && p.date <= dtFim);
             let somaProventos = proventosNoPeriodo.reduce((acc, p) => acc + p.value, 0);
 
-            // ADICIONADO: Cálculo do DY LTM
             let proventosLTM = (dadosFII.dividendo[ticker] || []).filter(p => p.date > dtLTM_Ini && p.date <= dtFim);
-            // Conta os meses distintos em que houve pagamento (formato YYYY-MM)
             let mesesComPagamento = new Set(proventosLTM.map(p => p.date.substring(0, 7))).size;
             let somaProventosLTM = proventosLTM.reduce((acc, p) => acc + p.value, 0);
             let dyLTM = null;
 
             if (mesesComPagamento > 0 && pFim > 0) {
-                // Anualiza com base na quantidade de meses distintos que efetivamente pagaram dividendo
                 dyLTM = (somaProventosLTM * (12 / mesesComPagamento)) / pFim;
             }
 
@@ -308,16 +325,16 @@
             dadosPorSetor[info.setor].push({
                 'Ticker': ticker,
                 'Nome': info.nome,
-                'Preço Fech': fmtMoeda(pFim),
+                'Preço Fech.': fmtMoeda(pFim),
                 'Retorno Período': fmtPct(retorno),
-                'Retorno Aj. Período': fmtPct(retornoAjustado), // NOVA COLUNA
+                'Retorno Aj. Período': fmtPct(retornoAjustado), 
                 'DY Corrente (Anual)': fmtPct(dyCorrenteAnualizado),
-                'DY LTM': fmtPct(dyLTM), // NOVA COLUNA
-                'Soma Div Periodo': fmtMoeda(somaProventos),
+                'DY LTM': fmtPct(dyLTM),
+                'Soma Div. Período': fmtMoeda(somaProventos),
                 'Liquidez Diária (MM)': fmtNum(liquidezMM),
                 'Desconto (P/VP - 1)': fmtPct(desconto),
                 'Valor de Mercado (MM)': fmtNum(vMktMM),
-                'Valor de Mercado m2': fmtNum(vM2Puro)
+                'Valor de Mercado/m²': fmtNum(vM2Puro)
             });
         }
 
@@ -325,16 +342,7 @@
         for (let setor in dadosPorSetor) {
             let tId = 'tab-setor-' + idx;
             
-            let cols = Object.keys(dadosPorSetor[setor][0]).map(k => {
-                let tituloVisual = k;
-                if (k === 'Preço Fech') tituloVisual = 'Preço Fech.';
-                if (k === 'Soma Div Periodo') tituloVisual = 'Soma Div. Período';
-                if (k === 'Valor de Mercado m2') tituloVisual = 'Valor de Mercado/m²';
-                return {
-                    title: tituloVisual,
-                    data: k
-                };
-            });
+            let cols = Object.keys(dadosPorSetor[setor][0]).map(k => ({ title: k, data: k }));
 
             container.append(`
                 <div class="col-12 mb-4">
