@@ -17,7 +17,7 @@
         .nav-link { font-weight: 500; color: #5c6bc0; }
         
         /* Painel de Controle de Datas */
-        .control-panel { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 25px; }
+        .control-panel { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 25px; transition: all 0.3s ease; }
         
         /* Cartões por Setor */
         .card-setor { border: none; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 25px; }
@@ -38,19 +38,43 @@
 <div class="container-fluid">
     <h1>📊 Dashboard Analítico Avançado de FIIs</h1>
     
-    <!-- Painel de Controle de Período -->
+    <!-- Painel de Controle de Período Otimizado -->
     <div class="control-panel">
         <div class="row align-items-end">
-            <div class="col-md-3 col-sm-6 mb-2">
-                <label class="form-label fw-bold text-muted">📅 Data Inicial (Preço Base)</label>
-                <select id="data-inicial" class="form-select border-primary fw-bold text-dark"></select>
+            <!-- Dropdown Principal de Período -->
+            <div class="col-md-3 mb-3 mb-md-0">
+                <label class="form-label fw-bold text-muted">📅 Período de Análise</label>
+                <select id="periodo-select" class="form-select border-primary fw-bold text-dark">
+                    <option value="ltm" selected>LTM (Últimos 12 Meses)</option>
+                    <option value="ytd">YTD (No Ano)</option>
+                    <option value="mes">Último Mês</option>
+                    <option value="semana">Última Semana</option>
+                    <option value="custom">Datas Específicas...</option>
+                </select>
             </div>
-            <div class="col-md-3 col-sm-6 mb-2">
-                <label class="form-label fw-bold text-muted">📅 Data Final (Cálculo das Métricas)</label>
-                <select id="data-final" class="form-select border-primary fw-bold text-dark"></select>
+            
+            <!-- Contêiner de Datas Específicas (Escondido por padrão) -->
+            <div class="col-md-6 mb-3 mb-md-0" id="custom-dates-container" style="display: none;">
+                <div class="row">
+                    <div class="col-6">
+                        <label class="form-label fw-bold text-muted">Data Inicial</label>
+                        <select id="data-inicial" class="form-select border-primary text-dark"></select>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label fw-bold text-muted">Data Final</label>
+                        <select id="data-final" class="form-select border-primary text-dark"></select>
+                    </div>
+                </div>
             </div>
-            <div class="col-md-6 text-md-end text-start mb-2">
-                <button id="btn-calcular" class="btn btn-primary fw-bold px-4">🔄 Recalcular Indicadores</button>
+
+            <div class="col-md-3 text-md-end text-start">
+                <button id="btn-calcular" class="btn btn-primary fw-bold px-4 w-100">🔄 Recalcular Indicadores</button>
+            </div>
+        </div>
+        <!-- Texto de ajuda para Datas Específicas -->
+        <div class="row mt-2" id="help-text-datas" style="display: none;">
+            <div class="col-12 text-muted" style="font-size: 0.85rem;">
+                <em>* O seletor de datas restringe as opções apenas aos dias úteis em que houve pregão e há dados disponíveis.</em>
             </div>
         </div>
     </div>
@@ -63,12 +87,10 @@
     </ul>
 
     <div class="tab-content" id="dashTabsContent">
-        <!-- Aba Principal Calculada -->
         <div class="tab-pane fade show active" id="base" role="tabpanel">
             <div id="container-setores" class="row"></div>
         </div>
 
-        <!-- Abas de Ofertas Estáticas (CSVs) -->
         <div class="tab-pane fade px-3" id="andamento" role="tabpanel">
             <div class="card card-setor"><div class="card-body table-responsive">
                 <h4 class="mb-3 text-primary">Ofertas em Andamento</h4>
@@ -89,7 +111,6 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
-<!-- Biblioteca para Ler o .xlsx diretamente no Frontend -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
@@ -114,9 +135,7 @@
 
     function normalizarDataExcel(val) {
         if (!val) return null;
-        if (val instanceof Date) {
-            return val.toISOString().split('T')[0];
-        }
+        if (val instanceof Date) return val.toISOString().split('T')[0];
         if (typeof val === 'number') { 
             let d = new Date(Date.UTC(0, 0, val - 1));
             return d.toISOString().split('T')[0];
@@ -131,15 +150,52 @@
         return null;
     }
 
+    // --- FUNÇÕES DE LÓGICA DE DATAS ---
+    
+    // Subtrai tempo de forma segura (evitando problemas de Fuso Horário)
+    function calcularDataRetroativa(baseDateStr, moveType) {
+        let parts = baseDateStr.split('-');
+        let y = parseInt(parts[0]);
+        let m = parseInt(parts[1]) - 1;
+        let d = parseInt(parts[2]);
+        
+        let dateObj = new Date(y, m, d);
+        
+        if (moveType === 'semana') dateObj.setDate(dateObj.getDate() - 7);
+        else if (moveType === 'mes') dateObj.setMonth(dateObj.getMonth() - 1);
+        else if (moveType === 'ytd') dateObj = new Date(y, 0, 1);
+        else if (moveType === 'ltm') dateObj.setFullYear(dateObj.getFullYear() - 1);
+        
+        let ry = dateObj.getFullYear();
+        let rm = String(dateObj.getMonth() + 1).padStart(2, '0');
+        let rd = String(dateObj.getDate()).padStart(2, '0');
+        
+        return `${ry}-${rm}-${rd}`;
+    }
+
+    // Busca a data VÁLIDA (com pregão) mais próxima do alvo
+    function obterDataValidaMaisProxima(targetDateStr) {
+        if (listaDatasOrdenadas.length === 0) return null;
+        let closest = listaDatasOrdenadas[0];
+        let minDiff = Infinity;
+        let targetTime = new Date(targetDateStr + 'T00:00:00').getTime(); 
+        
+        for (let d of listaDatasOrdenadas) {
+            let diff = Math.abs(new Date(d + 'T00:00:00').getTime() - targetTime);
+            if (diff < minDiff) {
+                minDiff = diff;
+                closest = d;
+            }
+        }
+        return closest;
+    }
+
     function obterValorLookback(historicoTicker, dataLimite) {
         if (!historicoTicker || historicoTicker.length === 0) return null;
         let valorEncontrado = null;
         for (let i = 0; i < historicoTicker.length; i++) {
-            if (historicoTicker[i].date <= dataLimite) {
-                valorEncontrado = historicoTicker[i].value;
-            } else {
-                break;
-            }
+            if (historicoTicker[i].date <= dataLimite) valorEncontrado = historicoTicker[i].value;
+            else break;
         }
         return valorEncontrado;
     }
@@ -165,20 +221,16 @@
             let rows = XLSX.utils.sheet_to_json(shSetor);
             rows.forEach(r => {
                 let t = r['Ticker'];
-                if (t) {
-                    mapaSetor[t] = { setor: r['Setor'] || 'Outros', nome: r['Nome sem Ticker'] || r['Nome'] };
-                }
+                if (t) mapaSetor[t] = { setor: r['Setor'] || 'Outros', nome: r['Nome sem Ticker'] || r['Nome'] };
             });
         }
 
-        // Função de carregamento mais robusta a erros de digitação no Excel
         function carregarAba(nomeEsperado, targetObj) {
             let nomeAlvoLimpo = nomeEsperado.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
             let sheetName = workbook.SheetNames.find(s => {
                 let sLimpo = s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
                 return sLimpo === nomeAlvoLimpo;
             });
-
             if (!sheetName) return; 
 
             let sheet = workbook.Sheets[sheetName];
@@ -196,7 +248,6 @@
                 for (let i = 0; i < Math.min(3, rows.length); i++) {
                     if (rows[i] && rows[i][c]) textoColuna += " " + rows[i][c];
                 }
-                
                 let ticker = extrairTicker(textoColuna);
                 if (ticker) {
                     colMapeamento[c] = ticker;
@@ -206,7 +257,6 @@
 
             for (let r = 1; r < rows.length; r++) {
                 if (!rows[r] || rows[r].length === 0) continue;
-                
                 let dataFmt = normalizarDataExcel(rows[r][0]);
                 if (!dataFmt) continue;
 
@@ -240,6 +290,7 @@
 
         listaDatasOrdenadas.sort((a,b) => a.localeCompare(b));
 
+        // Preencher caixas de seleção de datas específicas com todas as opções
         let selIni = $('#data-inicial'), selFim = $('#data-final');
         selIni.empty(); selFim.empty();
         listaDatasOrdenadas.forEach(d => {
@@ -247,14 +298,10 @@
             selFim.append(`<option value="${d}">${d}</option>`);
         });
 
-        if (listaDatasOrdenadas.length > 0) {
-            selFim.val(listaDatasOrdenadas[listaDatasOrdenadas.length - 1]);
-            let idxIni = Math.max(0, listaDatasOrdenadas.length - 6);
-            selIni.val(listaDatasOrdenadas[idxIni]);
-        }
-
         $('#loading').fadeOut();
-        executarCalculosFII(); 
+        
+        // Simula a escolha inicial do dropdown para rodar as lógicas
+        $('#periodo-select').trigger('change');
     }
 
     function executarCalculosFII() {
@@ -277,7 +324,6 @@
             if (pFim === null) continue;
 
             let retorno = (pIni !== null && pIni > 0) ? (pFim / pIni) - 1 : null;
-
             let pAjIni = obterValorLookback(dadosFII.precoAjustado[ticker], dtIni);
             let pAjFim = obterValorLookback(dadosFII.precoAjustado[ticker], dtFim);
             let retornoAjustado = (pAjIni !== null && pAjIni > 0 && pAjFim !== null) ? (pAjFim / pAjIni) - 1 : null;
@@ -294,7 +340,6 @@
             }
 
             let vMktMM = (qc !== null) ? (pFim * qc) / 1000000 : null;
-
             let provCorrente = obterValorLookback(dadosFII.dividendo[ticker], dtFim);
             let dyCorrenteAnualizado = (provCorrente !== null && pFim > 0) ? (provCorrente / pFim) * 12 : null;
 
@@ -317,7 +362,6 @@
 
             if (!dadosPorSetor[info.setor]) dadosPorSetor[info.setor] = [];
             
-            // ATENÇÃO AQUI: Nomes das propriedades ("chaves") SEM ponto!
             dadosPorSetor[info.setor].push({
                 'Ticker': ticker,
                 'Nome': info.nome,
@@ -337,8 +381,6 @@
         let idx = 0;
         for (let setor in dadosPorSetor) {
             let tId = 'tab-setor-' + idx;
-            
-            // ATENÇÃO AQUI: Mapeando os nomes limpos (data) para os Títulos de exibição (title) que têm ponto.
             let colunasDataTables = [
                 { title: "Ticker", data: "Ticker" },
                 { title: "Nome", data: "Nome" },
@@ -394,6 +436,36 @@
     }
 
     $(document).ready(function() {
+        // Lógica de mudança do Período
+        $('#periodo-select').on('change', function() {
+            let selecao = $(this).val();
+            
+            if (selecao === 'custom') {
+                // Modo manual: exibe os dropdowns de datas específicas
+                $('#custom-dates-container').fadeIn();
+                $('#help-text-datas').fadeIn();
+            } else {
+                // Modo Automático: Esconde os dropdowns e atualiza o backend sozinho
+                $('#custom-dates-container').hide();
+                $('#help-text-datas').hide();
+                
+                if (listaDatasOrdenadas.length > 0) {
+                    let dataMaxima = listaDatasOrdenadas[listaDatasOrdenadas.length - 1];
+                    let dataAlvo = calcularDataRetroativa(dataMaxima, selecao);
+                    let dataRealEncontrada = obterDataValidaMaisProxima(dataAlvo);
+                    
+                    $('#data-inicial').val(dataRealEncontrada);
+                    $('#data-final').val(dataMaxima);
+                    
+                    executarCalculosFII(); // Calcula automaticamente ao trocar a opção
+                }
+            }
+        });
+
+        // Botão de Forçar Recálculo (Usado principalmente para as "Datas Específicas")
+        $('#btn-calcular').on('click', executarCalculosFII);
+
+        // Inicialização do Excel
         let timestamp = new Date().getTime();
         let urlPlanilha = 'Base_Geral.xlsx?v=' + timestamp;
         
@@ -404,8 +476,6 @@
 
         carregarOfertasCSV('Ofertas_Andamento.csv', '#table-andamento');
         carregarOfertasCSV('Ofertas_Realizadas.csv', '#table-realizadas');
-
-        $('#btn-calcular').on('click', executarCalculosFII);
     });
 </script>
 </body>
