@@ -171,24 +171,21 @@
             });
         }
 
-        // Função CARREGAR ABA reescrita para ser super resistente a falhas de formatação
+        // Função de carregamento mais robusta a erros de digitação no Excel
         function carregarAba(nomeEsperado, targetObj) {
-            // 1. Busca flexível ignorando acentos e espaços invisíveis
             let nomeAlvoLimpo = nomeEsperado.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
             let sheetName = workbook.SheetNames.find(s => {
                 let sLimpo = s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
                 return sLimpo === nomeAlvoLimpo;
             });
 
-            if (!sheetName) return; // Se a aba realmente não existir, sai silenciosamente.
+            if (!sheetName) return; 
 
             let sheet = workbook.Sheets[sheetName];
             let rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
             if (rows.length < 2) return;
 
             let colMapeamento = [];
-            
-            // 2. Busca Tickers nas 3 primeiras linhas do Excel (previne falhas se a linha 1 for vazia ou diferente)
             let maxCols = 0;
             for (let i = 0; i < Math.min(3, rows.length); i++) {
                 if (rows[i] && rows[i].length > maxCols) maxCols = rows[i].length;
@@ -203,17 +200,15 @@
                 let ticker = extrairTicker(textoColuna);
                 if (ticker) {
                     colMapeamento[c] = ticker;
-                    // Mapeia caso o fundo não conste na aba Setor
                     if (!mapaSetor[ticker]) mapaSetor[ticker] = { setor: 'Outros', nome: ticker };
                 }
             }
 
-            // 3. Lê os dados numéricos
             for (let r = 1; r < rows.length; r++) {
                 if (!rows[r] || rows[r].length === 0) continue;
                 
                 let dataFmt = normalizarDataExcel(rows[r][0]);
-                if (!dataFmt) continue; // Pula linhas de cabeçalho ou vázias
+                if (!dataFmt) continue;
 
                 if (nomeEsperado === 'Preço de Fechamento' && !listaDatasOrdenadas.includes(dataFmt)) {
                     listaDatasOrdenadas.push(dataFmt);
@@ -283,7 +278,6 @@
 
             let retorno = (pIni !== null && pIni > 0) ? (pFim / pIni) - 1 : null;
 
-            // Retorno Ajustado Corrigido
             let pAjIni = obterValorLookback(dadosFII.precoAjustado[ticker], dtIni);
             let pAjFim = obterValorLookback(dadosFII.precoAjustado[ticker], dtFim);
             let retornoAjustado = (pAjIni !== null && pAjIni > 0 && pAjFim !== null) ? (pAjFim / pAjIni) - 1 : null;
@@ -322,19 +316,21 @@
             }
 
             if (!dadosPorSetor[info.setor]) dadosPorSetor[info.setor] = [];
+            
+            // ATENÇÃO AQUI: Nomes das propriedades ("chaves") SEM ponto!
             dadosPorSetor[info.setor].push({
                 'Ticker': ticker,
                 'Nome': info.nome,
-                'Preço Fech.': fmtMoeda(pFim),
-                'Retorno Período': fmtPct(retorno),
-                'Retorno Aj. Período': fmtPct(retornoAjustado), 
-                'DY Corrente (Anual)': fmtPct(dyCorrenteAnualizado),
-                'DY LTM': fmtPct(dyLTM),
-                'Soma Div. Período': fmtMoeda(somaProventos),
-                'Liquidez Diária (MM)': fmtNum(liquidezMM),
-                'Desconto (P/VP - 1)': fmtPct(desconto),
-                'Valor de Mercado (MM)': fmtNum(vMktMM),
-                'Valor de Mercado/m²': fmtNum(vM2Puro)
+                'PrecoFech': fmtMoeda(pFim),
+                'RetornoPeriodo': fmtPct(retorno),
+                'RetornoAjPeriodo': fmtPct(retornoAjustado), 
+                'DYCorrente': fmtPct(dyCorrenteAnualizado),
+                'DYLTM': fmtPct(dyLTM),
+                'SomaDivPeriodo': fmtMoeda(somaProventos),
+                'LiquidezDiaria': fmtNum(liquidezMM),
+                'Desconto': fmtPct(desconto),
+                'ValorMercado': fmtNum(vMktMM),
+                'ValorMercadoM2': fmtNum(vM2Puro)
             });
         }
 
@@ -342,7 +338,21 @@
         for (let setor in dadosPorSetor) {
             let tId = 'tab-setor-' + idx;
             
-            let cols = Object.keys(dadosPorSetor[setor][0]).map(k => ({ title: k, data: k }));
+            // ATENÇÃO AQUI: Mapeando os nomes limpos (data) para os Títulos de exibição (title) que têm ponto.
+            let colunasDataTables = [
+                { title: "Ticker", data: "Ticker" },
+                { title: "Nome", data: "Nome" },
+                { title: "Preço Fech.", data: "PrecoFech" },
+                { title: "Retorno Período", data: "RetornoPeriodo" },
+                { title: "Retorno Aj. Período", data: "RetornoAjPeriodo" },
+                { title: "DY Corrente (Anual)", data: "DYCorrente" },
+                { title: "DY LTM", data: "DYLTM" },
+                { title: "Soma Div. Período", data: "SomaDivPeriodo" },
+                { title: "Liquidez Diária (MM)", data: "LiquidezDiaria" },
+                { title: "Desconto (P/VP - 1)", data: "Desconto" },
+                { title: "Valor de Mercado (MM)", data: "ValorMercado" },
+                { title: "Valor de Mercado/m²", data: "ValorMercadoM2" }
+            ];
 
             container.append(`
                 <div class="col-12 mb-4">
@@ -357,7 +367,7 @@
 
             $('#' + tId).DataTable({
                 data: dadosPorSetor[setor],
-                columns: cols,
+                columns: colunasDataTables,
                 language: { url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json' },
                 pageLength: 10,
                 order: [],
