@@ -150,6 +150,7 @@
         return null;
     }
 
+    // --- LÓGICA DE DATAS ---
     function calcularLimitesData(dataMaximaStr, tipo) {
         let parts = dataMaximaStr.split('-');
         let y = parseInt(parts[0]);
@@ -406,7 +407,7 @@
         for (let setor in dadosPorSetor) {
             let tId = 'tab-setor-' + idx;
             
-            // Definição dinâmica das colunas
+            // Definição dinâmica de colunas base
             let colunasDataTables = [
                 { title: "Ticker", data: "Ticker" },
                 { title: "Nome", data: "Nome" },
@@ -421,8 +422,9 @@
                 { title: "Valor de Mercado (MM)", data: "ValorMercado" }
             ];
 
-            // Adiciona a coluna m² apenas se o setor NÃO for "Híbrido Papel"
-            if (setor !== "Híbrido Papel") {
+            // Adiciona a coluna condicionalmente apenas se não pertencer aos setores irrelevantes para m²
+            let setoresSemM2 = ['Híbrido Papel', 'FOF', 'CRI'];
+            if (!setoresSemM2.includes(setor)) {
                 colunasDataTables.push({ title: "Valor de Mercado/m²", data: "ValorMercadoM2" });
             }
 
