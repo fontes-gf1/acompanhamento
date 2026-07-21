@@ -249,6 +249,14 @@
             });
         }
 
+        // --- OVERRIDES MANUAIS DE SETOR ---
+        if (mapaSetor['SNEL11']) {
+            mapaSetor['SNEL11'].setor = 'Outros';
+        }
+        if (mapaSetor['RBVA11']) {
+            mapaSetor['RBVA11'].setor = 'Híbrido Tijolo';
+        }
+
         function carregarAba(nomeEsperado, targetObj) {
             let nomeAlvoLimpo = nomeEsperado.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
             let sheetName = workbook.SheetNames.find(s => {
@@ -275,6 +283,7 @@
                 let ticker = extrairTicker(textoColuna);
                 if (ticker) {
                     colMapeamento[c] = ticker;
+                    // Só cria fallback genérico se não foi classificado e nem sobrescrito
                     if (!mapaSetor[ticker]) mapaSetor[ticker] = { setor: 'Outros', nome: ticker };
                 }
             }
