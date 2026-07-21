@@ -49,8 +49,7 @@
                     <option value="ytd">YTD (No Ano)</option>
                     <option value="mes">Último Mês</option>
                     <option value="7dias">Últimos 7 dias (D-7)</option>
-                    <option value="semana_atual">Semana da Base (Seg a Sex)</option>
-                    <option value="semana_passada">Semana Anterior (Seg a Sex)</option>
+                    <option value="semana_atual">Última semana</option>
                     <option value="custom">Datas Específicas...</option>
                 </select>
             </div>
@@ -151,8 +150,6 @@
         return null;
     }
 
-    // --- NOVA LÓGICA DE DATAS ---
-    // Agora o sistema retorna a Data Inicial e Data Final com base na opção escolhida
     function calcularLimitesData(dataMaximaStr, tipo) {
         let parts = dataMaximaStr.split('-');
         let y = parseInt(parts[0]);
@@ -169,7 +166,6 @@
             result.fim = dataMaximaStr;
         }
         else if (tipo === 'semana_atual') {
-            // Segunda a Sexta da semana a qual a "Data Máxima" pertence
             let day = dataMaxObj.getDay();
             let diff = (day === 0 ? 6 : day - 1);
             let monday = new Date(dataMaxObj);
@@ -180,20 +176,6 @@
             
             result.ini = monday.toISOString().split('T')[0];
             result.fim = friday.toISOString().split('T')[0];
-        }
-        else if (tipo === 'semana_passada') {
-            // Segunda a Sexta da semana anterior à "Data Máxima"
-            let day = dataMaxObj.getDay();
-            let diff = (day === 0 ? 6 : day - 1);
-            
-            let lastMonday = new Date(dataMaxObj);
-            lastMonday.setDate(dataMaxObj.getDate() - diff - 7);
-            
-            let lastFriday = new Date(lastMonday);
-            lastFriday.setDate(lastMonday.getDate() + 4);
-            
-            result.ini = lastMonday.toISOString().split('T')[0];
-            result.fim = lastFriday.toISOString().split('T')[0];
         }
         else if (tipo === 'mes') {
             let p = new Date(dataMaxObj);
@@ -423,6 +405,8 @@
         let idx = 0;
         for (let setor in dadosPorSetor) {
             let tId = 'tab-setor-' + idx;
+            
+            // Definição dinâmica das colunas
             let colunasDataTables = [
                 { title: "Ticker", data: "Ticker" },
                 { title: "Nome", data: "Nome" },
@@ -434,9 +418,13 @@
                 { title: "Soma Div. Período", data: "SomaDivPeriodo" },
                 { title: "Liquidez Diária (MM)", data: "LiquidezDiaria" },
                 { title: "Desconto (P/VP - 1)", data: "Desconto" },
-                { title: "Valor de Mercado (MM)", data: "ValorMercado" },
-                { title: "Valor de Mercado/m²", data: "ValorMercadoM2" }
+                { title: "Valor de Mercado (MM)", data: "ValorMercado" }
             ];
+
+            // Adiciona a coluna m² apenas se o setor NÃO for "Híbrido Papel"
+            if (setor !== "Híbrido Papel") {
+                colunasDataTables.push({ title: "Valor de Mercado/m²", data: "ValorMercadoM2" });
+            }
 
             container.append(`
                 <div class="col-12 mb-4">
@@ -495,7 +483,6 @@
                     let dtIniValida = obterDataValidaMaisProxima(limites.ini);
                     let dtFimValida = obterDataValidaMaisProxima(limites.fim);
                     
-                    // Failsafe: Evita que Data Final avance além do limite disponível caso o alvo caia num fim de semana
                     if (dtFimValida > dataMaxima) dtFimValida = dataMaxima;
                     
                     $('#data-inicial').val(dtIniValida);
